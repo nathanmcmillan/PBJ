@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+set -uo pipefail
+
+function version {
+  printf '%s\n' 'pbj, version 1.0'
+}
+
+function usage {
+  version
+  printf '%s\n' 'pure bash json formatter'
+  printf '%s\n' 'read from file or stdin. prints to stdout'
+}
+
+function fun {
+  # todo
+  # sort keys alphabetically
+  # count and verify matching brackets
+  # stop on error
+  # write to file
+
+  input="${input#"${input%%[![:space:]]*}"}"
+
+  local output=""
+  local size="${#input}"
+
+  if [[ ${input:0:1} != '{' ]]; then
+    printf -- 'Not a JSON object\n'
+    exit 1
+  fi
+
+  local depth=0
+
+  for ((i = 0; i < size; i++)); do
+    local char="${input:i:1}"
+    case $char in
+    $'\n')
+      continue
+      ;;
+    '"')
+      local string=''
+      while :; do
+        ((i++))
+        ((i >= size)) && break
+        char="${input:i:1}"
+        [[ $char == '"' ]] && break
+        string="$string$char"
+      done
+      output="$output"'"'"$string"'"'
+      ;;
+    - | [0-9])
+      local number=$char
+      while :; do
+        ((i++))
+        ((i >= size)) && break
+        char="${input:i:1}"
+        [[ ! $char =~ [0-9eE.+-] ]] && break
+        number="$number$char"
+      done
+      ((i--))
+      output="$output$number"
+      ;;
+    ':')
+      output="$output"': '
+      ;;
+    ',')
+      output="$output"$',\n'
+      local spaces=$((depth * 2))
+      printf -v output '%s%*s' "$output" $spaces ' '
+      ;;
+    '[')
+      ((depth++))
+      local spaces=$((depth * 2))
+      printf -v output '%s[\n%*s' "$output" $spaces ' '
+      ;;
+    ']')
+      ((depth--))
+      local spaces=$((depth * 2))
+      printf -v output '%s\n%*s]' "$output" $spaces ' '
+      ;;
+    '{')
+      ((depth++))
+      local spaces=$((depth * 2))
+      printf -v output '%s{\n%*s' "$output" $spaces ' '
+      ;;
+    '}')
+      ((depth--))
+      local spaces=$((depth * 2))
+      if ((spaces != 0)); then
+        printf -v output '%s\n%*s}' "$output" $spaces ' '
+      else
+        output="$output"$'\n}'
+      fi
+      ;;
+    esac
+  done
+
+  printf '%s\n' "$output"
+}
+
+function main {
+  local arg="${1:-}"
+
+  if [[ $arg == '-v' || $arg == '--version' ]]; then
+    version
+    exit
+  fi
+
+  if [[ $arg == '-h' || $arg == '--help' ]]; then
+    usage
+    exit
+  fi
+
+  if [[ $arg == "" ]]; then
+    input=""
+    while read -r line; do
+      input="$input"$'\n'"$line"
+    done < /dev/stdin
+    fun
+  elif [[ -f $arg ]]; then
+    input=$(< "$arg")
+    fun
+  else
+    printf -- 'Not a file\n' > /dev/stderr
+    exit 1
+  fi
+}
+
+main "$@"
